@@ -45,6 +45,7 @@ if 1:
 # ------------
 
 #GTex common_donor_id set
+
 if 0:
     wbdf = pd.DataFrame(pd.read_csv(wholeblood_gene_tpm_path, sep='\t', skiprows=2, nrows=0))
     fcdf = pd.DataFrame(pd.read_csv(frontalcortex_gene_tpm_path, sep='\t', skiprows=2, nrows=0))
@@ -249,3 +250,17 @@ if 0:
     print(f'min std: {min(stdev)} max std: {max(stdev)}')
     plt.errorbar(x, mean, yerr=stdev)
     plt.show()
+
+#Find gene indexes
+if 0:
+    with open(GTexString_gene_set_path, 'r') as f:
+        GTexString_gene_set = json.load(f)['GTexString_gene_set']
+
+    list = ['ENSG00000254507','ENSG00000097033','ENSG00000149295','ENSG00000225830','ENSG00000229503','ENSG00000254453','ENSG00000236976','ENSG00000232564']
+
+    for gene in list:
+        try:
+            i = GTexString_gene_set.index(gene)
+            print(f'{gene} -> {i}')
+        except:
+            print(f'{gene} not found')

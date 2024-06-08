@@ -71,6 +71,8 @@ if 1:
     gene_links_path = r'C:\Users\xamuc\Desktop\PIC1\DataSetup\STRING\gene_links.txt'
     gene_links_graph_path = r'C:\Users\xamuc\Desktop\PIC1\DataSetup\STRING\gene_links_graph.dgl'
 
+    familyndata_path = r'C:\Users\xamuc\Desktop\PIC1\DataSetup\STRING\familyndata.json'
+
 #Protein set
 if 0:
     protein_set = set()
@@ -199,6 +201,87 @@ if 0:
 
 #Graph analysis
 
-if 1:
-    g = dgl.load(gene_links_graph_path)
+if 0:
+    print("loading data...")
+    g = dgl.load_graphs(gene_links_graph_path)[0][0]
+
+    #plot hist link strenght frequencies
+    if 0:
+        data = np.array(g.edata['w'].tolist())
+        data_set = list(set(data))
+        max_link = max(data_set) # 999
+        min_link = min(data_set) # 0
+        nbins = 10
+        plt.hist(data, bins=nbins, edgecolor='black')
+        plt.title('Link strenght frequencies')
+        plt.xlabel('Link Strenght')
+        plt.ylabel('Frequency')
+        plt.savefig(r'C:\Users\xamuc\Desktop\PIC1\DataSetup\STRING\Linkstrenghtfrequencies.png')
+        plt.show()
+
+    #Generate families
+    w_threshold = 500
+    if 0:
+        print("Searching for families...")
+        g.ndata['f'] = torch.full((g.num_nodes(),), -1)
+        nf = 0
+
+        bs = 10000
+        bi = 0
+        nb = len(g.edata['w'])//bs
+        print(f"Reading batches - {nb}")
+        for bi in range(nb):
+            I = np.arange(bi*bs, (bi+1*bs))
+            #I, W = zip(*[(i,w) for i,w in zip(I, g.edata['w'][I]) if w > 150])
+            I = np.array([i for i, w in zip(I, g.edata['w'][I]) if w > w_threshold])
+            for i in I:
+                src = g.edges()[0][i]
+                fsrc = g.ndata['f'][src]
+                dst = g.edges()[1][i]
+                fdst = g.ndata['f'][dst]
+                if fsrc == -1 and fdst == -1:
+                    g.ndata['f'][src] = nf
+                    g.ndata['f'][dst] = nf
+                    nf += 1
+                elif fsrc == -1 and fdst != -1:
+                    g.ndata['f'][src] = fdst
+                elif fsrc != -1 and fdst == -1:
+                    g.ndata['f'][dst] = fsrc
+                else:
+                    g.ndata['f'][g.ndata['f'] == fdst] = fsrc
+
+            EstimateTimePercent(bi, nb, 1)
+            bi += 1
+
+        familyndata = g.ndata['f'].tolist()
+        family_set = sorted(list(set(familyndata)))[1:]
+        for i in range(len(family_set)):
+            print(i, family_set[i])
+            g.ndata['f'][g.ndata['f'] == family_set[i]] = i
+        familyndata = g.ndata['f'].tolist()
+
+
+        with open(familyndata_path,'w') as f:
+            json.dump({'familyndata':familyndata}, f)
+
+    #Family analysis
+    if 1:
+        with open(familyndata_path, 'r') as f:
+            familyndata = np.array(json.load(f)['familyndata'])
+
+        family_set = set(familyndata)
+        familyndata = familyndata.astype(np.float32) + 0.1
+        print(family_set)
+        #family hist
+        print(sorted(familyndata))
+        if 1:
+            bin_edges = list(range(-1, max(family_set)+2))
+            plt.hist(familyndata, bins=bin_edges, edgecolor='black', log=True)
+            plt.title('Family counts')
+            #plt.xticks(list(range(-1,max(family_set)+1)))
+            plt.xlabel('Family')
+            plt.ylabel('Frequency')
+            plt.savefig(fr'C:\Users\xamuc\Desktop\PIC1\DataSetup\STRING\familycounts{w_threshold}.png')
+            plt.show()
+        #g.ndata['f'] = torch.tensor(familyndata)
 
