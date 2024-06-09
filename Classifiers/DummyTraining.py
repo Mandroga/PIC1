@@ -1,14 +1,37 @@
+import os
+import json
+
 from DLTools import *
 from GCNModels import *
-import dgl.data
-import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
-import pandas as pd
 
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+
+import dgl.data
+import torch
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
+
+import pandas as pd
+
+def GenerateDir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+def ManageBestLoss(best_test_loss_dict, file_name='best_test_loss'):
+    with open(project_dir + rf'\Dummy\Losses\{file_name}.json', 'w') as f:
+        json.dump(best_test_loss_dict, f)
+    with open(project_dir + rf'\Dummy\Losses\{file_name}.txt', 'w') as f:
+        for DataSet in list(best_test_loss_dict['Data']):
+            f.write(DataSet+'\n')
+            for Model in list(best_test_loss_dict['Data'][DataSet]):
+                f.write(f"{Model}:{best_test_loss_dict['Data'][DataSet][Model]}\n")
+        f.write('\n')
+        for Model in list(best_test_loss_dict['Parameters']):
+            f.write(f"{Model}:{best_test_loss_dict['Parameters'][Model]}\n")
+
+
 
 
 def train_GCN_batch(model, optimizer, ES, g, data, gt, batch_size=32):
@@ -80,29 +103,6 @@ def train_MLP(mlp, ES, Xi, yi):
         if EarlyStop: break
         epoch += 1
 
-
-#Load data
-if 1:
-    print("Loading graph...")
-    gs = []
-    for i in range(2):
-        gs += [dgl.load_graphs(rf'C:\Users\xamuc\Desktop\PIC1\DataSetup\Dummy\dummygraph{i+1}.dgl')[0][0].to('cuda')]
-    print("Loading Data...")
-    data = []
-    gt = []
-    for i in range(5):
-        ddf = pd.DataFrame(pd.read_csv(rf'C:\Users\xamuc\Desktop\PIC1\DataSetup\Dummy\data{i+1}.csv'))
-        ddf = ddf.astype(float)
-
-        data += [torch.stack([torch.tensor(ddf.iloc[i, :-1], dtype=torch.float32) for i in range(len(ddf))]).to('cuda')]
-        gt += [torch.stack([torch.tensor(ddf.iloc[i, -1], dtype=torch.float32) for i in range(len(ddf))]).to('cuda').unsqueeze(1)]
-
-    data_packs = []
-    for i in range(3):
-        data_packs += [(i, data[i],gt[i],gs[0])]
-    for i in range(3,5):
-        data_packs += [(i, data[i], gt[i], gs[1])]
-
 def ChooseModelTrain(model_name, h, lr, g, data_i, gt_i, ES):
     if model_name == 'GCN1':
         h1, h2, h3 = h
@@ -117,23 +117,24 @@ def ChooseModelTrain(model_name, h, lr, g, data_i, gt_i, ES):
         train_GCN_batch(model, optimizer, ES, g, data_i, gt_i)
 
     if model_name == 'GCN3':
-        model = DummyGCN1(h).to('cuda')
+        model = DummyGCN3(h).to('cuda')
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         train_GCN_batch(model, optimizer, ES, g, data_i, gt_i)
 
     if model_name == 'MLP':
-        mlp = MLPRegressor(hidden_layer_sizes=h, activation='relu', solver='adam',
+        model = MLPRegressor(hidden_layer_sizes=h, activation='relu', solver='adam',
                                    alpha=0.0001, batch_size='auto', learning_rate='constant',
                                    learning_rate_init=lr, random_state=seed)
-        train_MLP(mlp, ES, data_i, gt_i)
+        train_MLP(model, ES, data_i.cpu(), gt_i.cpu())
+    return model
 
-def GridListTrain(model_name, hs, lrs, data_packs):
+def GridListTrain(model_name, hs, lrs, data_packs, best_test_loss_dict):
     print(f'Training {model_name}')
     for i, data_i, gt_i , g in data_packs:
         best_test_loss = []
         for h in hs:
             for lr in lrs:
-                print(f'Training DataSet{i+1}, {h}_{lr}')
+                print(f'Training DataSet{i}, {h}_{lr}')
 
                 ES = EarlyStopper()
                 ES.BDF = False
@@ -148,13 +149,73 @@ def GridListTrain(model_name, hs, lrs, data_packs):
                 plt.title(title)
                 plt.legend()
                 plt.grid(True)
-                plt.savefig(rf'C:\Users\xamuc\Desktop\PIC1\DataSetup\Model\Dummy\DataSet{i + 1}\{model_name}\{title}.png')
+
+                save_dir = project_dir + rf'\Dummy\Losses\DataSet{i}\{model_name}'
+                GenerateDir(save_dir)
+                plt.savefig(save_dir + rf'\{title}.png')
                 plt.clf()
-        print(f'best_test_loss DataSet{i+1} - \n{model_name}:{best_test_loss}')
+
+        if 'Data' not in best_test_loss_dict:
+            best_test_loss_dict['Data'] = {}
+        if f'DataSet{i}' not in best_test_loss_dict['Data']:
+            best_test_loss_dict['Data'][f'DataSet{i}'] = {}
+        best_test_loss_dict['Data'][f'DataSet{i}'][model_name] = best_test_loss
+
+        print(f'best_test_loss DataSet{i} - \n{model_name}:{best_test_loss}')
+
+    if f'Parameters' not in best_test_loss_dict:
+        best_test_loss_dict['Parameters'] = {}
+    best_test_loss_dict['Parameters'][model_name] = {'hs':hs, 'lrs':lrs}
+
+project_dir = rf'C:\Users\xamuc\Desktop\PIC1'
+
+#Load data
+if 0:
+    print("Loading graphs...")
+    gs = []
+    for i in range(3):
+        gs += [dgl.load_graphs(project_dir + rf'\Dummy\Data\graph{i}.dgl')[0][0].to('cuda')]
+
+    print("Loading Data...")
+    data = []
+    gt = []
+    for i in range(5):
+        ddf = pd.DataFrame(pd.read_csv(project_dir + rf'\Dummy\Data\data{i}.csv'))
+        ddf = ddf.astype(float)
+
+        data += [torch.stack([torch.tensor(ddf.iloc[i, :-1], dtype=torch.float32) for i in range(len(ddf))]).to('cuda')]
+        gt += [torch.stack([torch.tensor(ddf.iloc[i, -1], dtype=torch.float32) for i in range(len(ddf))]).to('cuda').unsqueeze(1)]
+
+    data_packs = []
+    for i in range(2):
+        data_packs += [(i, data[i],gt[i],gs[0])]
+    data_packs += [(2, data[2], gt[2], gs[1])]
+    for i in range(3,5):
+        data_packs += [(i, data[i], gt[i], gs[2])]
 
 #Train
-if 1:
-    seed = SetSeed(97733834)
+if 0:
+    seed = SetSeed(1596973221)
+    best_test_loss_dict = {}
+    hs = [(1, 6, 1), (1, 36, 1), (6, 36, 6), (36, 36, 36), (12, 72, 24), (6, 108, 72)]
+    lrs = [0.001, 0.01, 0.1, 1]
+    GridListTrain('GCN1', hs, lrs, data_packs, best_test_loss_dict)
+    GridListTrain('GCN2', hs, lrs, data_packs, best_test_loss_dict)
     hs = [(36, 18, 6), (100, 50, 36), (200, 100, 50), (300, 150, 72)]
+    GridListTrain('MLP', hs, lrs, data_packs, best_test_loss_dict)
+    hs = [6,12,24,48]
     lrs = [0.1]
-    GridListTrain('MLP', hs, lrs, data_packs)
+    GridListTrain('GCN3', hs, lrs, data_packs, best_test_loss_dict)
+
+    #ManageBestLosses(best_test_loss_dict)
+
+#Best Test Losses Analysis
+if 1:
+    with open(project_dir + rf'\Dummy\Losses\best_test_loss_dict.json', 'r') as f:
+        best_test_loss_dict = json.load(f)
+
+    #Sorted best losses
+    for DataSet in list(best_test_loss_dict['Data']):
+        print(DataSet)
+        for Model in list(best_test_loss_dict['Data'][DataSet]):
+            print(f"{Model}:{sorted(best_test_loss_dict['Data'][DataSet][Model])[0]:.3f}")

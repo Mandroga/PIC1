@@ -52,7 +52,6 @@ class EarlyStopper:
 
     def MaxIteration(self):
         if self.epoch >= self.MaxIter:
-            print("Max")
             self.IsConverging = self.ConvergingMaxIter
 
     def BatchDiffFrac(self):
