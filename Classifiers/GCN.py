@@ -135,11 +135,11 @@ if 0:
             n += 1
 
 #Train seed
-if 0:
+if 1:
     seed = SetSeed(1596973221)
     ES = EarlyStopper()
     ES.ConvergingMaxIter = 50
-    ES.MaxIter = 500
+    ES.MaxIter = 700
     model = GCN1(gt.shape[1]).to('cuda')
     optimizer = torch.optim.Adam(model.parameters(), lr=0.075)
     train_GCN_batch(model, optimizer, ES, g, data, gt)
