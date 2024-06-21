@@ -11,29 +11,30 @@ import time
 import joblib
 from DLTools import *
 
+project_dir = r'C:\Users\xamuc\Desktop\PIC1\Data'
 #PATHS
 if 1:
-    data_path = r'C:\Users\xamuc\Desktop\PIC1\DataSetup\GTex\gene_tpm_whole_blood_graph.csv'
-    ground_truth_path = r'C:\Users\xamuc\Desktop\PIC1\DataSetup\GTex\gene_tpm_brain_frontal_cortex_graph.csv'
-    model_path = r'C:\Users\xamuc\Desktop\PIC1\DataSetup\Model\MLP_frontal_cortex_predictor.pkl'
-    ES_path = r'C:\Users\xamuc\Desktop\PIC1\DataSetup\Model\MLP_ES.pkl'
+    data_path = project_dir + r'\GTEx\GTEx_wbg_df.csv'
+    ground_truth_path = project_dir + r'\GTEx\GTEx_fcdf_filtered.csv'
+    model_path = project_dir + r'\Predictors\MLP_amygdala_predictor.pkl'
+    ES_path = project_dir + r'\Predictors\MLP_ES.pkl'
 
 #Load data
 if 1:
     ddf = pd.DataFrame(pd.read_csv(data_path))
     gtdf = pd.DataFrame(pd.read_csv(ground_truth_path))
-    ddf.iloc[:, 1:] = ddf.iloc[:, 1:].astype(float)
-    gtdf.iloc[:, 1:] = gtdf.iloc[:, 1:].astype(float)
+#    ddf.iloc[:, 1:] = ddf.iloc[:, 1:].astype(float)
+   # gtdf.iloc[:, 1:] = gtdf.iloc[:, 1:].astype(float)
 
-    data = torch.stack([torch.tensor(ddf.iloc[:, i], dtype=torch.float32) for i in range(1, len(ddf.columns))])
-    gt = torch.stack([torch.tensor(gtdf.iloc[:, i], dtype=torch.float32) for i in range(1, len(gtdf.columns))])
+    data = torch.stack([torch.tensor(ddf.iloc[:, i], dtype=torch.float32) for i in range(3, len(ddf.columns))])
+    gt = torch.stack([torch.tensor(gtdf.iloc[:, i], dtype=torch.float32) for i in range(3, len(gtdf.columns))])
 
     X = data
     y = gt
 
 #Train MLP
-if 0:
-    seed = SetSeed()
+if 1:
+    seed = SetSeed(1596973221)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=seed)
 
     # Initialize MLPRegressor
@@ -68,15 +69,19 @@ if 0:
 
 #Load MLP
 if 1:
-    seed = SetSeed(3302443110)
+    seed = SetSeed(1596973221)
     mlp = joblib.load(model_path)
     ES = EarlyStopper()
     ES.load(ES_path)
 
+if 1:
+    ES.PlotLoss()
+    plt.title(f'MLP Loss per epoch')
+    plt.show()
 #Evaluate
 if 1:
     pred_matrix = torch.tensor(mlp.predict(X))
-    mean_matrix = torch.stack([torch.mean(gt, dim=0)] * 159)
+    mean_matrix = torch.stack([torch.mean(gt, dim=0)] * gt.shape[0])
     E = Evaluate(pred_matrix, gt)
     E.std_measure()
     E.AvgResults()
@@ -84,5 +89,3 @@ if 1:
     E.std_measure()
     E.AvgResults()
 
-ES.PlotTitle = f'MLP {seed} - Loss per epoch'
-ES.PlotLoss()

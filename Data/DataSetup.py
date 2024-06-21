@@ -29,6 +29,14 @@ def GenerateDir(dir):
     if not os.path.exists(dir):
         os.makedirs(dir)
 
+def savefile(file, file_path):
+    with open(file_path, 'wb') as f:
+        pickle.dump(file, f)
+
+def loadfile(file_path):
+    with open(file_path, 'rb') as f:
+        return pickle.load(f)
+    
 def DefineFindFunctions(search_for, search_find):
     search_condition = search_for + search_find
 
@@ -97,42 +105,47 @@ def AnnotationSearch(find_list, search_for, search_find):
 #PATHS
 if 1:
     project_dir = r'C:\Users\xamuc\Desktop\PIC1\Data'
+    input_tissue = 'Whole blood'
+    output_tissue = 'Amygdala'
 
     Annotations_dir = project_dir + r'\Annotations'
-    STRING_dir = project_dir + r'\STRING'
-    GTEx_dir = project_dir + r'\GTEx'
-    for dir in [Annotations_dir, STRING_dir, GTEx_dir]: GenerateDir(dir)
+    STRING_dir = project_dir + rf'\STRING'
+    GTEx_dir = project_dir + rf'\GTEx'
+    
+    STRING_setup_dir = STRING_dir + rf'\{input_tissue} - {output_tissue}'
+    GTEx_setup_dir = GTEx_dir + rf'\{input_tissue} - {output_tissue}'
+    
+    for dir in [Annotations_dir, STRING_setup_dir, GTEx_setup_dir]: GenerateDir(dir)
 
     annotations_path = Annotations_dir + r'\Homo_sapiens.GRCh38.111.gtf'
 
     protein_links_path = STRING_dir + r'\9606.protein.links.v12.0.txt'
 
-    wholeblood_gene_tpm_path = GTEx_dir + r'\gene_tpm_whole_blood.gct'
-    frontalcortex_gene_tpm_path = GTEx_dir + r'\gene_tpm_brain_frontal_cortex_ba9.gct'
+    input_gene_tpm_path = GTEx_dir + r'\gene_tpm_whole_blood.gct'
+    target_gene_tpm_path = GTEx_dir + r'\gene_tpm_brain_amygdala.gct'
 
     #------------
-    STRING_protein_set_path = STRING_dir + r'\STRING_protein_set.pkl'
-    STRING_link_weights_path = STRING_dir + r'\STRING_link_weights.pkl'
-    STRING_protein_to_gene_path = STRING_dir + r'\STRING_protein_to_gene.pkl'
-    STRING_gene_set_path = STRING_dir + r'\STRING_gene_set.pkl'
-    STRING_gene_links_path = STRING_dir + r'\STRING_gene_links.txt'
-    STRING_graph_links_path = STRING_dir + r'\STRING_graph_links.txt'
-    dgl_graph_path = STRING_dir + r'\dgl_graph.bin'
+    STRING_protein_set_path = STRING_setup_dir + r'\STRING_protein_set.pkl'
+    STRING_link_weights_path = STRING_setup_dir + r'\STRING_link_weights.pkl'
+    STRING_protein_to_gene_path = STRING_setup_dir + r'\STRING_protein_to_gene.pkl'
+    STRING_gene_set_path = STRING_setup_dir + r'\STRING_gene_set.pkl'
+    STRING_gene_links_path = STRING_setup_dir + r'\STRING_gene_links.txt'
+    STRING_graph_links_path = STRING_setup_dir + r'\STRING_graph_links.txt'
+    dgl_graph_path = STRING_setup_dir + r'\dgl_graph.bin'
 
-    GTEx_fc_important_genes_path = GTEx_dir + r'\GTEx_fc_important_genes.pkl'
-    GTEx_gene_set_path = GTEx_dir + r'\GTEx_gene_set.pkl'
-    GTEx_common_donors_path = GTEx_dir + r'\GTEx_common_donors.pkl'
-    GTEx_gene_intersection_set_path = GTEx_dir + r'\GTEx_gene_intersection_set.pkl'
-    GTEx_filtered_gene_set_path = GTEx_dir + r'\GTEx_filtered_gene_set.pkl'
-    GTEx_wbdf_filtered_path = GTEx_dir + r'\GTEx_wbdf_filtered.csv'
-    GTEx_fcdf_filtered_path = GTEx_dir + r'\GTEx_fcdf_filtered.csv'
-    GTEx_wbg_df_path = GTEx_dir + r'\GTEx_wbg_df.csv'
+    GTEx_important_genes_path = GTEx_setup_dir + r'\GTEx_important_genes.pkl'
+    GTEx_gene_set_path = GTEx_setup_dir + r'\GTEx_gene_set.pkl'
+    GTEx_common_donors_path = GTEx_setup_dir + r'\GTEx_common_donors.pkl'
+    GTEx_gene_intersection_set_path = GTEx_setup_dir + r'\GTEx_gene_intersection_set.pkl'
+    GTEx_filtered_gene_set_path = GTEx_setup_dir + r'\GTEx_filtered_gene_set.pkl'
+    GTEx_input_df_filtered_path = GTEx_setup_dir + r'\GTEx_input_df_filtered.csv'
+    GTEx_target_df_filtered_path = GTEx_setup_dir + r'\GTEx_target_df_filtered.csv'
+    GTEx_input_graph_df_path = GTEx_setup_dir + r'\GTEx_input_graph_df.csv'
 
 #STRING Protein set (Load time - 60s)
 if 0:
     print("STRING Protein set")
     STRING_protein_set = set()
-    STRING_link_weights = []
     with open(protein_links_path, 'r') as f:
         bs = 500000
         bi = 0
@@ -141,20 +154,17 @@ if 0:
                 lines = np.array([next(f) for _ in range(bs)])
                 arrays = np.array([line.split(" ") for line in lines])
                 STRING_protein_set.update({protein for a in arrays for protein in (a[0].split(".")[1], a[1].split(".")[1])})
-                STRING_link_weights += [float(a[2]) for a in arrays]
                 EstimateTimePercent(bi*bs, 13715404, bs)
                 bi += 1
             except: break
 
     STRING_protein_set = list(STRING_protein_set)
-    with open(STRING_protein_set_path, 'wb') as f1, open(STRING_link_weights_path, 'wb') as f2:
-        pickle.dump(STRING_protein_set, f1)
-        pickle.dump(STRING_link_weights, f2)
+    savefile(STRING_protein_set, STRING_protein_set_path)
+
 
 #Load STRING Protein set
 if 1:
-    with open(STRING_protein_set_path, 'rb') as f:
-        STRING_protein_set = pickle.load(f)
+    STRING_protein_set = loadfile(STRING_protein_set_path)
 
 #ANNOTATIONS -----------------
 #Generate STRING Protein to Gene (Needs STRING Protein set) (load time - 320s)
@@ -170,84 +180,80 @@ if 0:
 
     for protein in STRING_protein_set:
         STRING_protein_to_gene[protein] = list(STRING_protein_to_gene[protein])
+    
+    savefile(STRING_protein_to_gene, STRING_protein_to_gene_path)
 
-    with open(STRING_protein_to_gene_path, 'wb') as f:
-        pickle.dump(STRING_protein_to_gene, f)
-    print(len(STRING_protein_to_gene))
-
-#Find Frontal cortex important genes (load time - 38s)
+#Find important genes (load time - 38s)
 if 0:
-    print("Find Frontal cortex important genes")
-    find_genes = [f'DRD{i+1}' for i in range(5)]
-    find_genes += ["SLC6A4","BDNF","COMT","DRD2","GRM3","DISC1","MAOA","NRG1","CACNA1C","FKBP5"]
+    print("Find important genes")
+    find_genes = ["DRD1", "DRD2", "DRD3", "DRD4", "DRD5","SLC6A4","BDNF","COMT","DRD2","GRM3","DISC1","MAOA","NRG1","CACNA1C","FKBP5"]
+    find_genes += ["GABRA1","GABRA2","GABRA3","GABRA4","GABRA5","GABRA6","GABRB1","GABRB2","GABRB3","GABRD","GABRE","GABRG1","GABRG2","GABRG3","GABRP","GABRQ","GABRR1","GABRR2","GABRR3","GABBR1","GABBR2"]
+
     found_list = AnnotationSearch(find_genes, ['gene_name',], ['gene_id',])
 
-    GTEx_fc_important_genes = set()
+    GTEx_important_genes = set()
     for gene_name, gene_id, protein_id in found_list:
-        GTEx_fc_important_genes.add(gene_id)
+        print(gene_name, gene_id)
+        GTEx_important_genes.add(gene_id)
 
-    GTEx_fc_important_genes = list(GTEx_fc_important_genes)
-    print(len(GTEx_fc_important_genes))
-    with open(GTEx_fc_important_genes_path, 'wb') as f:
-        pickle.dump(GTEx_fc_important_genes, f)
+    GTEx_important_genes = list(GTEx_important_genes)
+    print(len(GTEx_important_genes))
+    savefile(GTEx_important_genes, GTEx_important_genes_path)
 
 #-----------------------------
 #STRING Gene set (Needs STRING Protein set and Protein to Gene)
-if 0:
+if 1:
     print("STRING Gene set")
-
-    with open(STRING_protein_set_path, 'rb') as f1, open(STRING_protein_to_gene_path, 'rb') as f2:
-        STRING_protein_set = pickle.load(f1)
-        STRING_protein_to_gene = pickle.load(f2)
+    
+    STRING_protein_set = loadfile(STRING_protein_set_path)
+    STRING_protein_to_gene = loadfile(STRING_protein_to_gene_path)
 
     STRING_gene_set = set()
     for protein in STRING_protein_set:
         STRING_gene_set.update(STRING_protein_to_gene[protein])
     STRING_gene_set = list(STRING_gene_set)
-    with open(STRING_gene_set_path, 'wb') as f:
-        pickle.dump(STRING_gene_set, f)
+    savefile(STRING_gene_set, STRING_gene_set_path)
+    
 #GTEx ------------------------
 #Filter Data
 if 0:
     #Load GTEx Data (load time 8s)
     if 1:
         print("Load GTEx Data")
-        wbdf = pd.DataFrame(pd.read_csv(wholeblood_gene_tpm_path, sep='\t', skiprows=2))
-        fcdf = pd.DataFrame(pd.read_csv(frontalcortex_gene_tpm_path, sep='\t', skiprows=2))
+        input_df = pd.DataFrame(pd.read_csv(input_gene_tpm_path, sep='\t', skiprows=2))
+        target_df = pd.DataFrame(pd.read_csv(target_gene_tpm_path, sep='\t', skiprows=2))
     #GTEx Gene set
     if 1:
         print("GTEx Gene set")
-        wb_gene_set = list(set(wbdf['Name'].apply(lambda x: x.split('.')[0])))
-        fc_gene_set = list(set(fcdf['Name'].apply(lambda x: x.split('.')[0])))
+        input_gene_set = list(set(input_df['Name'].apply(lambda x: x.split('.')[0])))
+        target_gene_set = list(set(target_df['Name'].apply(lambda x: x.split('.')[0])))
 
-        GTEx_gene_set = {'wb':wb_gene_set,'fc':fc_gene_set}
-        with open(GTEx_gene_set_path, 'wb') as f:
-            pickle.dump(GTEx_gene_set, f)
+        GTEx_gene_set = {'input':input_gene_set,'target':target_gene_set}
+        savefile(GTEx_gene_set, GTEx_gene_set_path)
+
     # GTex common donors
     if 1:
         print("GTex common donors")
-        wb_donors = [donor[:10] for donor in wbdf.columns.tolist()[3:]]
-        fc_donors = [donor[:10] for donor in fcdf.columns.tolist()[3:]]
-        GTEx_common_donors = list(set(wb_donors) & set(fc_donors))
-        with open(GTEx_common_donors_path, 'wb') as f:
-            pickle.dump(GTEx_common_donors, f)
-    #GTex Filter Data (Needs GTEx Data, GTEx and STRING Gene sets, GTEx fc important genes, common donors) (Load time 10s)
+        input_donors = [donor[:10] for donor in input_df.columns.tolist()[3:]]
+        target_donors = [donor[:10] for donor in target_df.columns.tolist()[3:]]
+        GTEx_common_donors = list(set(input_donors) & set(target_donors))
+        savefile(GTEx_common_donors, GTEx_common_donors_path)
+    #GTex Filter Data (Needs GTEx Data, GTEx and STRING Gene sets, GTEx target important genes, common donors) (Load time 10s)
     if 1:
         print("GTex Filter Data")
+        
+        GTEx_important_genes = loadfile(GTEx_important_genes_path)
 
-        with open(GTEx_fc_important_genes_path, 'rb') as f:
-            GTEx_fc_important_genes = pickle.load(f)
+        GTEx_gene_intersection_set = {'input':tuple(set(GTEx_gene_set['input']) & set(STRING_gene_set)),
+                                      'target':tuple(set(GTEx_gene_set['target']) & set(GTEx_important_genes))}
 
-        GTEx_gene_intersection_set = {'wb':tuple(set(GTEx_gene_set['wb']) & set(STRING_gene_set)),
-                                      'fc':tuple(set(GTEx_gene_set['fc']) & set(GTEx_fc_important_genes))}
-        with open(GTEx_gene_intersection_set_path, 'wb') as f:
-            pickle.dump(GTEx_gene_intersection_set, f)
+        savefile(GTEx_gene_intersection_set, GTEx_gene_intersection_set_path)
 
 
-        data_name = ['wb', 'fc']
-        GTEx_filtered_gene_set = {'wb':(),'fc':()}
-        dfs = [wbdf, fcdf]
-        df_save_path = [GTEx_wbdf_filtered_path, GTEx_fcdf_filtered_path]
+        data_name = ['input', 'target']
+        GTEx_filtered_gene_set = {'input':(),'target':()}
+        dfs = [input_df, target_df]
+        df_save_path = [GTEx_input_df_filtered_path, GTEx_target_df_filtered_path]
         for i in range(2):
             df = dfs[i]
             gene_set = GTEx_gene_intersection_set[data_name[i]]
@@ -278,39 +284,42 @@ if 0:
                 df = df[row_sparsity<= 0.5]
 
             # Normalize by average
-            if 1: df.iloc[:, 3:] = df.iloc[:, 3:].apply(lambda row: row / row.mean(), axis=1)
+            if 1:
+                flattened_data = df.iloc[:, 3:].values.flatten()
+                #quantiles = list(range(10,100,5)) # Example list of quantiles
+                #quantile_values = np.percentile(flattened_data, quantiles)
+                #print(quantile_values)
+                quantile95 = np.percentile(flattened_data, 95)
+                #df.iloc[:, 3:] = df.iloc[:, 3:].apply(lambda row: row / row.mean(), axis=1)
+                df.iloc[:, 3:] = df.iloc[:, 3:]/quantile95
 
             #Filtered gene set
             if 1:
                 GTEx_filtered_gene_set[data_name[i]] = np.sort(df['Name'].to_numpy())
             # Save df
             df.to_csv(df_save_path[i], index=False)
-
-        with open(GTEx_filtered_gene_set_path, 'wb') as f:
-            pickle.dump(GTEx_filtered_gene_set, f)
+        
+        savefile(GTEx_filtered_gene_set, GTEx_filtered_gene_set_path)
 #Filtered Data
-if 0:
+if 1:
     #Load GTEx Filtered Data
     if 1:
         print("Load GTEx Filtered Data")
-        wbdf = pd.DataFrame(pd.read_csv(GTEx_wbdf_filtered_path, sep=','))
-        fcdf = pd.DataFrame(pd.read_csv(GTEx_fcdf_filtered_path, sep=','))
+        input_df = pd.DataFrame(pd.read_csv(GTEx_input_df_filtered_path, sep=','))
+        target_df = pd.DataFrame(pd.read_csv(GTEx_target_df_filtered_path, sep=','))
 
-        with open(STRING_protein_set_path, 'rb') as f0, open(GTEx_filtered_gene_set_path, 'rb') as f1, open(GTEx_common_donors_path, 'rb') as f2 :
-            STRING_protein_set = pickle.load(f0)
-            wb_filtered_gene_set = pickle.load(f1)['wb']
-            GTEx_common_donors = pickle.load(f2)
+        STRING_protein_set = loadfile(STRING_protein_set_path)
+        input_filtered_gene_set = loadfile(GTEx_filtered_gene_set_path)['input']
+        GTEx_common_donors = loadfile(GTEx_common_donors_path)
 
-    # Graph Dataframe (Needs GTEx Data Filtered, GTEx common donors, wb filtered gene set)
-    if 0:
-        wbg_df_rows = len(wb_filtered_gene_set)
-        wbg_df = pd.DataFrame(columns=wbdf.columns, index=range(wbg_df_rows))
+    # Graph Dataframe (Needs GTEx Data Filtered, GTEx common donors, input filtered gene set)
+    if 1:
+        input_graph_df_rows = len(input_filtered_gene_set)
+        input_graph_df = pd.DataFrame(columns=input_df.columns, index=range(input_graph_df_rows))
 
         # Sort genes for index to correspond to graph node
-        gene_to_index = {gene:wb_filtered_gene_set.index(gene) for gene in wb_filtered_gene_set}
-        print(len(gene_to_index))
-        gene_list = [gene.split(".")[0] for gene in wbdf['Name'].tolist()]
-        print(len(gene_list))
+        gene_to_index = {gene:np.where(input_filtered_gene_set==gene)[0][0] for gene in input_filtered_gene_set}
+        gene_list = [gene.split(".")[0] for gene in input_df['Name'].tolist()]
 
         bs = 1000
         n_batches = len(gene_list) // bs + 1
@@ -320,18 +329,18 @@ if 0:
             filtered_I_indexes = [(i, index) for i, index in zip(I, indexes) if index is not None]
             if filtered_I_indexes != []:
                 I, indexes = zip(*filtered_I_indexes)
-                wbg_df.iloc[list(indexes)] = wbdf.iloc[list(I)]
-        wbg_df.to_csv(wbg_df_path, index=False)
+                input_graph_df.iloc[list(indexes)] = input_df.iloc[list(I)]
+        input_graph_df.to_csv(GTEx_input_graph_df_path, index=False)
 
 # STRING -------------------
-if 0:
-    # Gene links (Needs STRING protein set STRING protein to gene wb filtered gene set) (Load time 128s)
-    if 1:
+if 1:
+    # Gene links (Needs STRING protein set STRING protein to gene input filtered gene set) (Load time 128s)
+    if 0:
         pg = {}
         i = 0
         for protein in STRING_protein_set:
             gene = STRING_protein_to_gene[protein]
-            if gene != [] and gene[0] in wb_filtered_gene_set:
+            if gene != [] and gene[0] in input_filtered_gene_set:
                 pg[protein] = gene[0]
 
 
@@ -355,6 +364,25 @@ if 0:
                     bi += 1
                 except: break
 
+    #Gene link weights
+    if 0:
+        print("Gene link weights")
+        STRING_link_weights = []
+        with open(STRING_gene_links_path, 'r') as f:
+            bs = 500000
+            bi = 0
+            while True:
+                try:
+                    lines = np.array([next(f) for _ in range(bs)])
+                    arrays = np.array([line.split(" ") for line in lines])
+                    STRING_link_weights += [float(a[2]) for a in arrays]
+                    EstimateTimePercent(bi * bs, 13715404, bs)
+                    bi += 1
+                except:
+                    break
+        
+        savefile(STRING_link_weights, STRING_link_weights_path)
+
     # Generate dgl graph from Gene Links (Load time 80s)
     if 1:
         print("Generate dgl graph from Gene Links")
@@ -368,7 +396,7 @@ if 0:
                 try:
                     src, dst, weights = zip(*[tuple(next(f).strip().split(" ")) for _ in range(bs)])
                     start_time = time.time()
-                    src, dst, weights = np.searchsorted(wb_filtered_gene_set, src), np.searchsorted(wb_filtered_gene_set, dst), np.array(weights, dtype=np.float32)
+                    src, dst, weights = np.searchsorted(input_filtered_gene_set, src), np.searchsorted(input_filtered_gene_set, dst), np.array(weights, dtype=np.float32)
                     weights = torch.tensor(weights, dtype=torch.float32)
 
                     g.add_edges(src, dst)

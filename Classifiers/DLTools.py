@@ -117,9 +117,9 @@ class EarlyStopper:
 class Evaluate():
     def __init__(self, pred_matrix, gt_matrix):
         #Matrix input shape (#samples, #features)
-        self.pred_matrix = pred_matrix
-        self.gt_matrix = gt_matrix
-        self.std = torch.std(gt_matrix, dim=0)
+        self.pred_matrix = pred_matrix.cpu()
+        self.gt_matrix = gt_matrix.cpu()
+        self.std = torch.std(self.gt_matrix, dim=0)
         self.results = -1
         self.average_results = -1
 
@@ -130,11 +130,15 @@ class Evaluate():
         measure = torch.full(self.std.shape, c)
         self.results = torch.abs((self.pred_matrix - self.gt_matrix) / measure)
         self.average_results = torch.mean(self.results, dim=0)
+    def relative_measure(self):
+        self.results = torch.abs( (self.pred_matrix - self.gt_matrix) / self.gt_matrix)
+        self.average_results = torch.mean(self.results, dim=0)
+
     def Results(self):
         torch.set_printoptions(threshold=float('inf'))
         print(self.results)
     def AvgResults(self):
-        print(self.average_results)
+        print(self.average_results.tolist())
 
 class EstimateTimePercent():
     def __init__(self):
